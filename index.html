@@ -3,397 +3,641 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SecOps Telemetry & Vulnerability Lab Console [PS-Core 7.4.2]</title>
+  <title>CyberWatch | Enterprise Vulnerability Intelligence Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Map Engine (Leaflet) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', sans-serif; }
-    .font-mono { font-family: 'Fira Code', monospace; }
-    .terminal-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-    .terminal-scroll::-webkit-scrollbar-track { background: #090d16; }
-    .terminal-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
-    .terminal-scroll::-webkit-scrollbar-thumb:hover { background: #334155; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #0c1017; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #1e2638; border-radius: 3px; }
+    
+    #threat-map {
+      background-color: #080c14;
+      width: 100%;
+      height: 100%;
+    }
+    .leaflet-container {
+      background: #080c14 !important;
+    }
+
+    /* Filter to convert standard tiles into sleek dark SecOps blue */
+    .dark-tiles {
+      filter: brightness(0.55) invert(1) contrast(3.2) hue-rotate(200deg) saturate(0.25);
+    }
+    
+    .beacon-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .beacon-core-critical {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background-color: #f43f5e;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 12px #f43f5e;
+    }
+    .beacon-pulse-critical {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background-color: rgba(244, 63, 94, 0.45);
+      animation: pulse-ring 2s infinite ease-out;
+    }
+    .beacon-core-high {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background-color: #f59e0b;
+      border: 1.5px solid #ffffff;
+      box-shadow: 0 0 9px #f59e0b;
+    }
+    .beacon-pulse-high {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background-color: rgba(245, 158, 11, 0.4);
+      animation: pulse-ring 2.2s infinite ease-out;
+    }
+    .beacon-core-monitor {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background-color: #06b6d4;
+      border: 1px solid #ffffff;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+    
+    .leaflet-popup-content-wrapper {
+      background: #0f1422 !important;
+      color: #e2e8f0 !important;
+      border: 1px solid #334155 !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
+      border-radius: 8px !important;
+      padding: 0 !important;
+    }
+    .leaflet-popup-tip {
+      background: #0f1422 !important;
+      border: 1px solid #334155 !important;
+    }
   </style>
 </head>
-<body class="bg-[#070a0f] text-slate-200 min-h-screen flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
+<body class="bg-[#0b0e14] text-slate-200 min-h-screen flex antialiased selection:bg-cyan-500 selection:text-black">
 
-  <!-- Internal Lab Console Header -->
-  <header class="border-b border-slate-800/80 bg-[#0b0f19] px-6 py-2.5 flex items-center justify-between sticky top-0 z-50">
-    <div class="flex items-center space-x-3">
-      <div class="p-1.5 bg-slate-800 rounded border border-slate-700 font-mono text-xs font-bold text-cyan-400 flex items-center space-x-1">
-        <i data-lucide="terminal" class="w-4 h-4"></i>
-        <span>PS</span>
-      </div>
-      <div>
-        <div class="flex items-center space-x-2">
-          <span class="text-sm font-semibold text-slate-100 font-mono tracking-tight">VULN-TELEMETRY-NODE-01</span>
-          <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.2 rounded">SESSION_ACTIVE</span>
-          <span class="text-[10px] font-mono text-slate-400 bg-slate-800/60 border border-slate-700/60 px-1.5 py-0.2 rounded">LOCAL_HYPERVISOR</span>
+  <aside class="w-64 border-r border-slate-800/80 bg-[#0e131d] flex flex-col shrink-0 select-none">
+    <div class="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-950/40 border border-cyan-400/30">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-white"></i>
         </div>
-        <p class="text-[11px] text-slate-400 font-mono">pwsh-7.4.2-linux-x64 / correlate-telemetry.ps1</p>
+        <div>
+          <h1 class="text-xs font-extrabold tracking-wider text-white uppercase">CYBERWATCH</h1>
+          <p class="text-[9px] text-slate-400 tracking-tight font-mono">SECOPS INTELLIGENCE v2.4</p>
+        </div>
+      </div>
+      <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    </div>
+
+    <div class="px-5 py-3.5 border-b border-slate-800/60 bg-[#0b0f17]/40 flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-700 to-slate-600 border border-slate-600/60 flex items-center justify-center font-bold text-xs text-white">
+        AD
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-semibold text-slate-200 truncate">SecOps Lead</p>
+        <p class="text-[10px] text-cyan-400/90 font-mono">Deloitte Cyber Eng</p>
       </div>
     </div>
-    
-    <div class="flex items-center space-x-4 text-xs font-mono">
-      <div class="hidden md:flex items-center space-x-2 text-slate-400">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-        <span>DAEMON: RUNNING</span>
-      </div>
-      <div class="hidden sm:block text-slate-400 border-l border-slate-800 pl-4">
-        <span>SNAPSHOT: 2026-10-12</span>
-      </div>
-      <button onclick="exportCSVManifest()" class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs font-mono transition">
-        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-cyan-400"></i>
-        <span>Export-Manifest.csv</span>
+
+    <nav class="flex-1 px-3 py-4 space-y-1">
+      <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-lg bg-slate-800/70 border border-slate-700/60 text-cyan-300 text-xs font-medium">
+        <i data-lucide="layout-dashboard" class="w-4 h-4 text-cyan-400"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" onclick="togglePwshDrawer()" class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-slate-200 text-xs font-medium transition">
+        <div class="flex items-center space-x-3">
+          <i data-lucide="terminal" class="w-4 h-4"></i>
+          <span>PowerShell Telemetry</span>
+        </div>
+        <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/50">CLI</span>
+      </a>
+      <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-slate-200 text-xs font-medium transition">
+        <i data-lucide="bug" class="w-4 h-4"></i>
+        <span>Vulnerabilities</span>
+      </a>
+      <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-slate-200 text-xs font-medium transition">
+        <i data-lucide="radar" class="w-4 h-4"></i>
+        <span>CISA KEV Intel</span>
+      </a>
+      <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-slate-200 text-xs font-medium transition">
+        <i data-lucide="server" class="w-4 h-4"></i>
+        <span>Asset Inventory</span>
+      </a>
+      <a href="#" class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-slate-200 text-xs font-medium transition">
+        <i data-lucide="file-check-2" class="w-4 h-4"></i>
+        <span>Scan Hygiene Audits</span>
+      </a>
+    </nav>
+
+    <div class="p-3 border-t border-slate-800/80">
+      <button onclick="togglePwshDrawer()" class="w-full flex items-center justify-center space-x-2 py-2 rounded-lg bg-slate-900 border border-slate-700/80 hover:border-cyan-500/50 text-xs font-mono text-cyan-400 transition">
+        <i data-lucide="command" class="w-3.5 h-3.5"></i>
+        <span>Open PowerShell CLI</span>
       </button>
     </div>
-  </header>
+  </aside>
 
-  <!-- Lab Status Bar -->
-  <div class="border-b border-slate-800/60 bg-[#090d16] px-6 py-2">
-    <div class="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
-      <div class="flex items-center justify-between border-r border-slate-800/60 pr-4">
-        <span class="text-slate-500">FLEET_COUNT:</span>
-        <span class="text-slate-200 font-bold">23 NODES</span>
+  <div class="flex-1 flex flex-col min-w-0 overflow-y-auto custom-scroll">
+    <header class="h-14 border-b border-slate-800/80 bg-[#0e131d]/90 backdrop-blur px-6 flex items-center justify-between sticky top-0 z-30">
+      <div class="flex items-center space-x-3 w-96">
+        <div class="relative w-full">
+          <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500"></i>
+          <input type="text" placeholder="Global search assets, CVEs, or business units..." 
+            class="w-full bg-[#080b11] border border-slate-800 rounded-lg pl-9 pr-4 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/60 font-mono">
+        </div>
       </div>
-      <div class="flex items-center justify-between border-r border-slate-800/60 pr-4">
-        <span class="text-slate-500">KEV_EXPLOITS:</span>
-        <span class="text-rose-400 font-bold">7 CONFIRMED</span>
+
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-2 px-2.5 py-1 rounded bg-slate-800/60 border border-slate-700/60 text-xs font-mono">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span class="text-slate-300">Deterministic Engine Active</span>
+        </div>
+        <button onclick="exportCSVManifest()" class="flex items-center space-x-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-lg shadow-cyan-900/30 transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Export-Manifest.csv</span>
+        </button>
       </div>
-      <div class="flex items-center justify-between border-r border-slate-800/60 pr-4">
-        <span class="text-slate-500">STALE_AUDITS:</span>
-        <span class="text-amber-400 font-bold">7 (>30 DAYS)</span>
+    </header>
+
+    <main class="p-6 space-y-6 max-w-7xl w-full mx-auto">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase font-mono tracking-wider text-cyan-400 font-semibold">Vulnerability Overview</p>
+          <h2 class="text-xl font-bold text-white tracking-tight">Live Threat Status & Exposure Telemetry</h2>
+        </div>
+        <div class="flex items-center space-x-2 text-xs font-mono text-slate-400">
+          <span class="px-2.5 py-1 bg-[#101726] border border-slate-800 rounded">Snapshot: 2026-10-12</span>
+          <span class="px-2.5 py-1 bg-[#101726] border border-slate-800 rounded text-rose-400 font-semibold">7 CISA KEV Active</span>
+        </div>
       </div>
-      <div class="flex items-center justify-between">
-        <span class="text-slate-500">EVAL_MODE:</span>
-        <span class="text-cyan-400 font-bold">DETERMINISTIC</span>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-14 h-14 rounded-full border-4 border-rose-500/30 border-t-rose-500 flex items-center justify-center shrink-0">
+            <span class="text-lg font-extrabold text-white">7</span>
+          </div>
+          <div>
+            <p class="text-xs text-rose-400 font-semibold uppercase font-mono tracking-wider">Critical KEV</p>
+            <p class="text-sm font-bold text-slate-100">Weaponized</p>
+            <p class="text-[10px] text-slate-500">Immediate Remediation</p>
+          </div>
+        </div>
+
+        <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-14 h-14 rounded-full border-4 border-amber-500/30 border-t-amber-500 flex items-center justify-center shrink-0">
+            <span class="text-lg font-extrabold text-white">21</span>
+          </div>
+          <div>
+            <p class="text-xs text-amber-400 font-semibold uppercase font-mono tracking-wider">High Risk</p>
+            <p class="text-sm font-bold text-slate-100">Severe Exposure</p>
+            <p class="text-[10px] text-slate-500">CVSS Base 7.0 - 8.9</p>
+          </div>
+        </div>
+
+        <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-14 h-14 rounded-full border-4 border-cyan-500/30 border-t-cyan-500 flex items-center justify-center shrink-0">
+            <span class="text-lg font-extrabold text-white">58</span>
+          </div>
+          <div>
+            <p class="text-xs text-cyan-400 font-semibold uppercase font-mono tracking-wider">Medium / Low</p>
+            <p class="text-sm font-bold text-slate-100">Internal Baseline</p>
+            <p class="text-[10px] text-slate-500">Scheduled Review</p>
+          </div>
+        </div>
+
+        <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center space-x-4">
+          <div class="w-14 h-14 rounded-full border-4 border-purple-500/30 border-t-purple-500 flex items-center justify-center shrink-0">
+            <span class="text-lg font-extrabold text-white">7</span>
+          </div>
+          <div>
+            <p class="text-xs text-purple-400 font-semibold uppercase font-mono tracking-wider">Scan Decay</p>
+            <p class="text-sm font-bold text-slate-100">>30 Days Stale</p>
+            <p class="text-[10px] text-slate-500">Unquantified Risk</p>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-8 bg-[#0f1422] border border-slate-800/80 rounded-xl p-5 flex flex-col relative overflow-hidden">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="globe-2" class="w-4 h-4 text-cyan-400"></i>
+              <h3 class="text-sm font-bold text-white tracking-wide">Enterprise Global Vulnerability Exposure Map</h3>
+            </div>
+            <div class="flex items-center space-x-4 text-xs font-mono">
+              <span class="flex items-center space-x-1.5 text-rose-400">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span>Active CISA KEV</span>
+              </span>
+              <span class="flex items-center space-x-1.5 text-amber-400">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>High Exposure</span>
+              </span>
+              <span class="flex items-center space-x-1.5 text-cyan-400">
+                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                <span>Baseline</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Watermark-Free Dark Map Container -->
+          <div class="relative w-full h-[320px] mt-3 rounded-lg border border-slate-800/70 overflow-hidden">
+            <div id="threat-map"></div>
+          </div>
+
+          <div class="flex items-center justify-between mt-3 text-[11px] font-mono text-slate-500">
+            <span>* Pan or click on target beacons to inspect localized node attribution</span>
+            <span class="text-cyan-400/80">Global Telemetry Grid Active</span>
+          </div>
+        </div>
+
+        <div class="lg:col-span-4 space-y-3 flex flex-col justify-between">
+          <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4">
+            <div class="flex items-center justify-between text-xs text-slate-400 font-mono">
+              <span>ACTIVE VULNERABILITIES</span>
+              <span class="text-rose-400 font-bold">+5% WoW</span>
+            </div>
+            <div class="text-3xl font-extrabold text-white mt-1">190</div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div class="bg-rose-500 h-full w-[65%]"></div>
+            </div>
+          </div>
+
+          <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">RISK SCORE GAUGE</p>
+              <div class="text-2xl font-black text-rose-400 mt-0.5">68 <span class="text-xs text-slate-500 font-normal">/ 100</span></div>
+              <p class="text-[10px] text-slate-500">High Exposure Level</p>
+            </div>
+            <div class="w-12 h-12 rounded-lg bg-rose-950/60 border border-rose-800/50 flex items-center justify-center text-rose-400 font-bold font-mono">
+              HIGH
+            </div>
+          </div>
+
+          <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">OPEN CRITICALS</p>
+              <div class="text-2xl font-black text-white mt-0.5">7 NODES</div>
+              <p class="text-[10px] text-rose-400 font-semibold">Active in CISA KEV</p>
+            </div>
+            <i data-lucide="flame" class="w-6 h-6 text-rose-500"></i>
+          </div>
+
+          <div class="bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">MEAN TIME TO REMEDIATE</p>
+              <div class="text-2xl font-black text-cyan-400 mt-0.5">4.2 <span class="text-xs text-slate-400 font-normal">DAYS</span></div>
+              <p class="text-[10px] text-slate-500">Target SLA: 7 Days</p>
+            </div>
+            <i data-lucide="timer" class="w-6 h-6 text-cyan-400"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-4 bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex flex-col">
+          <div class="flex items-center space-x-2 pb-3 border-b border-slate-800/80">
+            <i data-lucide="radio" class="w-4 h-4 text-rose-400"></i>
+            <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono">Live Cyber Intel Feed</h3>
+          </div>
+          <div class="space-y-3 mt-3 flex-1 overflow-y-auto max-h-72 custom-scroll text-xs">
+            <div class="p-2.5 rounded-lg bg-[#0a0d14] border border-slate-800/80">
+              <span class="text-[10px] font-mono text-rose-400 font-semibold">CISA KEV ALERT</span>
+              <p class="font-semibold text-slate-200 mt-0.5">CVE-2021-44228 Active Ingress</p>
+              <p class="text-[11px] text-slate-400 mt-1">Mass scanning detected targeting financial database node (FIN-SRV-002).</p>
+            </div>
+            <div class="p-2.5 rounded-lg bg-[#0a0d14] border border-slate-800/80">
+              <span class="text-[10px] font-mono text-amber-400 font-semibold">PERIMETER BREACH ATTEMPT</span>
+              <p class="font-semibold text-slate-200 mt-0.5">CVE-2022-40684 FortiOS Bypass</p>
+              <p class="text-[11px] text-slate-400 mt-1">Exploit attempt against administrative interface at OPS-NET-003.</p>
+            </div>
+            <div class="p-2.5 rounded-lg bg-[#0a0d14] border border-slate-800/80">
+              <span class="text-[10px] font-mono text-purple-400 font-semibold">SCAN HYGIENE WARNING</span>
+              <p class="font-semibold text-slate-200 mt-0.5">211-Day Scan Blindspot</p>
+              <p class="text-[11px] text-slate-400 mt-1">Core switch OPS-NET-002 has decayed past audit tolerance.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 bg-[#0f1422] border border-slate-800/80 rounded-xl p-4 flex flex-col">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="list-ordered" class="w-4 h-4 text-cyan-400"></i>
+              <h3 class="text-xs font-bold text-white uppercase tracking-wider font-mono">Top 5 Monday Morning Patching Targets</h3>
+            </div>
+            <button onclick="togglePwshDrawer()" class="text-xs text-cyan-400 hover:underline font-mono">Inspect Telemetry &rarr;</button>
+          </div>
+
+          <div class="overflow-x-auto mt-2">
+            <table class="w-full text-left text-xs font-mono">
+              <thead class="text-slate-500 uppercase text-[10px] border-b border-slate-800">
+                <tr>
+                  <th class="py-2.5">ASSET</th>
+                  <th class="py-2.5">SOFTWARE / CVE</th>
+                  <th class="py-2.5">SEVERITY</th>
+                  <th class="py-2.5">HYGIENE</th>
+                  <th class="py-2.5 text-right">SCORE</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <tr class="hover:bg-slate-800/30 cursor-pointer" onclick="openDetails('FIN-SRV-002')">
+                  <td class="py-2.5 font-bold text-slate-200">FIN-SRV-002<br><span class="text-[10px] text-slate-500 font-normal">Finance DB</span></td>
+                  <td class="py-2.5"><span class="text-rose-400 font-semibold">log4j-core 2.14.0</span><br><span class="text-slate-400 text-[10px]">CVE-2021-44228</span></td>
+                  <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-rose-950 text-rose-300 border border-rose-800">CRITICAL</span></td>
+                  <td class="py-2.5 text-amber-400">150d stale</td>
+                  <td class="py-2.5 text-right font-bold text-rose-400">100.0</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 cursor-pointer" onclick="openDetails('IT-SRV-002')">
+                  <td class="py-2.5 font-bold text-slate-200">IT-SRV-002<br><span class="text-[10px] text-slate-500 font-normal">Mail Server</span></td>
+                  <td class="py-2.5"><span class="text-rose-400 font-semibold">Exchange 15.1.2375.7</span><br><span class="text-slate-400 text-[10px]">CVE-2021-34473</span></td>
+                  <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-rose-950 text-rose-300 border border-rose-800">CRITICAL</span></td>
+                  <td class="py-2.5 text-amber-400">129d stale</td>
+                  <td class="py-2.5 text-right font-bold text-rose-400">97.2</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 cursor-pointer" onclick="openDetails('OPS-NET-003')">
+                  <td class="py-2.5 font-bold text-slate-200">OPS-NET-003<br><span class="text-[10px] text-slate-500 font-normal">Perimeter VPN</span></td>
+                  <td class="py-2.5"><span class="text-rose-400 font-semibold">Fortinet FortiOS 6.4.5</span><br><span class="text-slate-400 text-[10px]">CVE-2022-40684</span></td>
+                  <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-rose-950 text-rose-300 border border-rose-800">CRITICAL</span></td>
+                  <td class="py-2.5 text-emerald-400">Current</td>
+                  <td class="py-2.5 text-right font-bold text-rose-400">95.6</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 cursor-pointer" onclick="openDetails('FIN-SRV-001')">
+                  <td class="py-2.5 font-bold text-slate-200">FIN-SRV-001<br><span class="text-[10px] text-slate-500 font-normal">Finance App</span></td>
+                  <td class="py-2.5"><span class="text-rose-400 font-semibold">Apache HTTP 2.4.49</span><br><span class="text-slate-400 text-[10px]">CVE-2021-41773</span></td>
+                  <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-rose-950 text-rose-300 border border-rose-800">CRITICAL</span></td>
+                  <td class="py-2.5 text-emerald-400">Current</td>
+                  <td class="py-2.5 text-right font-bold text-rose-400">93.8</td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 cursor-pointer" onclick="openDetails('ENG-SRV-001')">
+                  <td class="py-2.5 font-bold text-slate-200">ENG-SRV-001<br><span class="text-[10px] text-slate-500 font-normal">Build Runner</span></td>
+                  <td class="py-2.5"><span class="text-amber-400 font-semibold">log4j-core 2.14.1</span><br><span class="text-slate-400 text-[10px]">CVE-2021-44228</span></td>
+                  <td class="py-2.5"><span class="px-2 py-0.5 rounded text-[10px] bg-amber-950 text-amber-300 border border-amber-800">HIGH</span></td>
+                  <td class="py-2.5 text-emerald-400">Current</td>
+                  <td class="py-2.5 text-right font-bold text-amber-400">90.0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
 
-  <!-- Workspace Console Layout -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-5">
-
-    <!-- Left: PowerShell Interactive CLI Shell (5 Cols) -->
-    <div class="lg:col-span-5 flex flex-col space-y-4">
-      
-      <div class="bg-[#0b0f19] border border-slate-800 rounded-lg flex flex-col h-full shadow-2xl overflow-hidden">
-        
-        <!-- PowerShell Window Title Bar -->
-        <div class="bg-[#0e1424] px-4 py-2 border-b border-slate-800 flex items-center justify-between">
-          <div class="flex items-center space-x-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-700 inline-block"></span>
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-700 inline-block"></span>
-            <span class="w-2.5 h-2.5 rounded-full bg-slate-700 inline-block"></span>
-            <span class="text-xs font-mono text-slate-300 ml-2 font-medium">PowerShell 7.4.2 Core Terminal</span>
-          </div>
-          <span class="text-[10px] font-mono text-cyan-400/80">pwsh@lab-host</span>
-        </div>
-
-        <!-- Quick Script Triggers -->
-        <div class="p-3 bg-[#090d16] border-b border-slate-800/80">
-          <div class="text-[10px] font-mono uppercase text-slate-500 mb-2 font-semibold tracking-wider">Execute Pre-Compiled Cmdlets:</div>
-          <div class="grid grid-cols-2 gap-1.5 font-mono text-xs">
-            <button onclick="execCmdlet('ciso_summary')" class="text-left bg-slate-900/90 hover:bg-slate-800 text-slate-300 p-2 rounded border border-slate-800 text-[11px] transition truncate">
-              <span class="text-cyan-400">.\</span>Get-CisoSummary.ps1
-            </button>
-            <button onclick="execCmdlet('monday_patch')" class="text-left bg-slate-900/90 hover:bg-slate-800 text-slate-300 p-2 rounded border border-slate-800 text-[11px] transition truncate">
-              <span class="text-cyan-400">.\</span>Get-SprintPatchQueue.ps1
-            </button>
-            <button onclick="execCmdlet('highest_risk_server')" class="text-left bg-slate-900/90 hover:bg-slate-800 text-slate-300 p-2 rounded border border-slate-800 text-[11px] transition truncate">
-              <span class="text-cyan-400">.\</span>Find-MaxRiskTarget.ps1
-            </button>
-            <button onclick="execCmdlet('stale_scans')" class="text-left bg-slate-900/90 hover:bg-slate-800 text-slate-300 p-2 rounded border border-slate-800 text-[11px] transition truncate">
-              <span class="text-cyan-400">.\</span>Audit-ScanHygiene.ps1
-            </button>
-          </div>
-        </div>
-
-        <!-- Live Terminal Stream -->
-        <div id="cli-viewport" class="p-4 bg-[#05080f] font-mono text-xs text-slate-300 overflow-y-auto flex-1 terminal-scroll min-h-[320px] leading-relaxed">
-          <p class="text-slate-500">PowerShell 7.4.2</p>
-          <p class="text-slate-500">Loading module: Acme.SecOps.VulnerabilityExposure (v1.0.4)...</p>
-          <p class="text-emerald-400">Ready. Telemetry pipeline active on assets_10-12.json.</p>
-          <p class="text-slate-400 mt-2">Type a query or execute a cmdlet above.</p>
-        </div>
-
-        <!-- CLI Input Field -->
-        <div class="p-2.5 bg-[#090d16] border-t border-slate-800 flex items-center space-x-2 font-mono">
-          <span class="text-cyan-400 text-xs font-semibold pl-1">PS&gt;</span>
-          <input type="text" id="cli-input" placeholder="Get-VulnExposure -Filter 'Apache'..." 
-            onkeydown="if(event.key==='Enter') handleCliInput()"
-            class="flex-1 bg-transparent border-0 text-xs text-slate-100 placeholder-slate-600 focus:outline-none">
-          <button onclick="handleCliInput()" class="bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs px-2.5 py-1 rounded border border-slate-700 transition">
-            Run
-          </button>
-        </div>
-
+  <div id="pwsh-drawer" class="fixed inset-y-0 right-0 w-[520px] bg-[#070a10] border-l border-slate-800 z-50 shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300 font-mono">
+    <div class="p-4 bg-[#0e131d] border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+        <span class="text-xs font-bold text-slate-100">PowerShell 7.4.2 Core Correlator</span>
       </div>
-
+      <button onclick="togglePwshDrawer()" class="text-slate-500 hover:text-slate-200"><i data-lucide="x" class="w-4 h-4"></i></button>
     </div>
 
-    <!-- Right: Telemetry Grid & Evidence Inspector (7 Cols) -->
-    <div class="lg:col-span-7 flex flex-col space-y-4">
-
-      <div class="bg-[#0b0f19] border border-slate-800 rounded-lg p-4 flex flex-col h-full shadow-2xl">
-        
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2 font-mono">
-          <div>
-            <h2 class="text-sm font-semibold text-slate-100 flex items-center space-x-2">
-              <i data-lucide="layers" class="w-4 h-4 text-cyan-400"></i>
-              <span>INSPECT-FLEET-EXPOSURE</span>
-            </h2>
-            <p class="text-[11px] text-slate-500">Weight: CVSS * Criticality * KEV_Multiplier * Decay_Penalty</p>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-xs text-slate-500">BU:</span>
-            <select id="bu-filter" onchange="renderGrid()" class="bg-[#05080f] border border-slate-800 text-xs rounded px-2 py-1 text-slate-300 focus:outline-none font-mono">
-              <option value="ALL">ALL UNITS</option>
-              <option value="Finance">Finance</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Operations">Operations</option>
-              <option value="IT">IT</option>
-              <option value="HR">HR</option>
-              <option value="Executive">Executive</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Table View -->
-        <div class="overflow-x-auto flex-1 mt-2">
-          <table class="w-full text-left font-mono text-xs">
-            <thead class="text-slate-500 border-b border-slate-800 uppercase text-[10px]">
-              <tr>
-                <th class="py-2">ASSET_ID</th>
-                <th class="py-2">SOFTWARE / SIGNATURE</th>
-                <th class="py-2">TIER</th>
-                <th class="py-2">CISA_KEV</th>
-                <th class="py-2">HYGIENE</th>
-                <th class="py-2 text-right">SCORE</th>
-              </tr>
-            </thead>
-            <tbody id="telemetry-body" class="divide-y divide-slate-800/50 text-[11px]">
-              <!-- Populated via script -->
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-500">
-          <span>* Click row to inspect PowerShell telemetry payload</span>
-          <span class="text-cyan-400">Status: In Sync</span>
-        </div>
-
+    <div class="p-3 bg-[#0a0d14] border-b border-slate-800">
+      <p class="text-[10px] uppercase text-slate-500 font-semibold mb-2">Pre-Engineered Cmdlets:</p>
+      <div class="grid grid-cols-2 gap-1.5 text-xs">
+        <button onclick="runCmdlet('ciso')" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500 text-left truncate">.\Get-CisoSummary.ps1</button>
+        <button onclick="runCmdlet('patch')" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500 text-left truncate">.\Get-SprintPatchQueue.ps1</button>
+        <button onclick="runCmdlet('max')" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500 text-left truncate">.\Find-MaxRiskTarget.ps1</button>
+        <button onclick="runCmdlet('hygiene')" class="p-1.5 rounded bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500 text-left truncate">.\Audit-ScanHygiene.ps1</button>
       </div>
-
     </div>
 
-  </main>
+    <div id="pwsh-stream" class="flex-1 p-4 overflow-y-auto custom-scroll text-xs text-slate-300 space-y-2 bg-[#05080e]">
+      <p class="text-slate-500">PowerShell 7.4.2</p>
+      <p class="text-emerald-400">Ready. Telemetry engine linked to assets_10-12.json.</p>
+    </div>
 
-  <!-- Evidence Inspector Modal (Telemetry Raw View) -->
-  <div id="inspector-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-[#0b0f19] border border-slate-700 rounded-lg max-w-xl w-full p-5 shadow-2xl relative font-mono">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
-        <div class="flex items-center space-x-2 text-cyan-400">
-          <i data-lucide="binary" class="w-4 h-4"></i>
-          <span class="text-xs font-bold uppercase">Get-TelemetryRecord -Detailed</span>
-        </div>
-        <button onclick="closeInspector()" class="text-slate-500 hover:text-slate-200"><i data-lucide="x" class="w-4 h-4"></i></button>
-      </div>
-
-      <div id="modal-dump" class="bg-[#05080f] rounded p-3 text-xs text-slate-300 space-y-2 border border-slate-800/80 terminal-scroll max-h-[350px] overflow-y-auto">
-        <!-- Injected -->
-      </div>
-
-      <div class="mt-4 flex justify-end">
-        <button onclick="closeInspector()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded transition">Close</button>
-      </div>
+    <div class="p-3 bg-[#0e131d] border-t border-slate-800 flex items-center space-x-2">
+      <span class="text-cyan-400 text-xs">PS&gt;</span>
+      <input type="text" id="drawer-input" placeholder="Get-VulnExposure..." onkeydown="if(event.key==='Enter') execDrawerInput()" class="flex-1 bg-transparent border-0 text-xs text-white focus:outline-none">
+      <button onclick="execDrawerInput()" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs px-2.5 py-1 rounded">Run</button>
     </div>
   </div>
 
   <script>
-    const inventory = [
-      { id: "FIN-SRV-001", host: "fin-app01.corp.local", ip: "10.10.1.11", dept: "Finance", crit: "critical", sw: "Apache HTTP Server 2.4.49", cve: "CVE-2021-41773", cvss: 7.5, kev: true, due: "2021-11-17", scan: "2026-10-12", stale: 0, score: 93.8, fix: "Upgrade to Apache >= 2.4.52 immediately." },
-      { id: "FIN-SRV-002", host: "fin-db01.corp.local", ip: "10.10.1.12", dept: "Finance", crit: "critical", sw: "log4j-core 2.14.0", cve: "CVE-2021-44228", cvss: 10.0, kev: true, due: "2021-12-24", scan: "2026-05-15", stale: 150, score: 100.0, fix: "Emergency upgrade to log4j-core >= 2.17.1 (Log4Shell)." },
-      { id: "ENG-SRV-001", host: "eng-build01.corp.local", ip: "10.10.2.11", dept: "Engineering", crit: "high", sw: "log4j-core 2.14.1", cve: "CVE-2021-44228", cvss: 10.0, kev: true, due: "2021-12-24", scan: "2026-10-12", stale: 0, score: 90.0, fix: "Upgrade build server log4j-core to >= 2.17.1." },
-      { id: "OPS-NET-003", host: "ops-vpn01.corp.local", ip: "10.10.3.3", dept: "Operations", crit: "critical", sw: "Fortinet FortiOS 6.4.5", cve: "CVE-2022-40684", cvss: 9.8, kev: true, due: "2022-11-01", scan: "2026-10-12", stale: 0, score: 95.6, fix: "Apply FortiOS firmware patch for admin interface bypass." },
-      { id: "IT-SRV-002", host: "it-mail01.corp.local", ip: "10.10.5.12", dept: "IT", crit: "critical", sw: "Exchange Server 15.1.2375.7", cve: "CVE-2021-34473", cvss: 9.8, kev: true, due: "2021-10-20", scan: "2026-06-05", stale: 129, score: 97.2, fix: "Apply Microsoft Exchange ProxyShell cumulative updates." },
-      { id: "OPS-SRV-001", host: "ops-mon01.corp.local", ip: "10.10.3.11", dept: "Operations", crit: "high", sw: "log4j-core 2.15.0", cve: "CVE-2021-45046", cvss: 9.0, kev: true, due: "2021-12-28", scan: "2026-10-12", stale: 0, score: 81.0, fix: "Upgrade to 2.17.1; 2.15.0 incomplete fix in non-default lookups." },
-      { id: "IT-NET-001", host: "it-proxy01.corp.local", ip: "10.10.5.2", dept: "IT", crit: "high", sw: "F5 BIG-IP 14.1.4", cve: "CVE-2020-5902", cvss: 9.8, kev: true, due: "2020-07-24", scan: "2026-04-01", stale: 194, score: 88.5, fix: "Upgrade BIG-IP firmware; TMUI interface exposed." },
-      { id: "ENG-SRV-002", host: "eng-nexus01.corp.local", ip: "10.10.2.12", dept: "Engineering", crit: "high", sw: "Apache HTTP Server 2.4.51", cve: "CVE-2021-42013", cvss: 9.8, kev: true, due: "2021-11-17", scan: "2026-04-10", stale: 185, score: 86.4, fix: "Upgrade to Apache >= 2.4.52; 2.4.51 path traversal continuation." },
-      { id: "OPS-NET-002", host: "ops-sw01.corp.local", ip: "10.10.3.2", dept: "Operations", crit: "high", sw: "Cisco IOS 15.2(7)E3", cve: "HYGIENE_ALERT", cvss: 0.0, kev: false, due: "N/A", scan: "2026-03-15", stale: 211, score: 18.0, fix: "Scan is 211 days stale. Trigger immediate rescan." }
-    ];
+    function initMap() {
+      const map = L.map('threat-map', {
+        center: [25, 5],
+        zoom: 1.5,
+        minZoom: 1.2,
+        maxZoom: 6,
+        zoomControl: false,
+        attributionControl: false,
+        worldCopyJump: true
+      });
 
-    function renderGrid() {
-      const bu = document.getElementById("bu-filter").value;
-      const tbody = document.getElementById("telemetry-body");
-      tbody.innerHTML = "";
+      // Free, Open, High-Resolution Cartographic Tile Layer (Zero API Key Required)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        className: 'dark-tiles'
+      }).addTo(map);
 
-      const filtered = inventory
-        .filter(a => bu === "ALL" || a.dept === bu)
-        .sort((a, b) => b.score - a.score);
+      const nodes = [
+        {
+          id: "FIN-SRV-002",
+          lat: 40.7128,
+          lng: -74.0060,
+          location: "New York, USA",
+          service: "Finance Database Server",
+          cve: "CVE-2021-44228 (Log4Shell)",
+          score: 100.0,
+          type: "critical"
+        },
+        {
+          id: "IT-SRV-002",
+          lat: 51.5074,
+          lng: -0.1278,
+          location: "London, UK",
+          service: "Primary Exchange Mail Gateway",
+          cve: "CVE-2021-34473 (ProxyShell)",
+          score: 97.2,
+          type: "critical"
+        },
+        {
+          id: "OPS-NET-003",
+          lat: 1.3521,
+          lng: 103.8198,
+          location: "Singapore",
+          service: "Perimeter VPN Gateway",
+          cve: "CVE-2022-40684 (FortiOS Bypass)",
+          score: 95.6,
+          type: "critical"
+        },
+        {
+          id: "FIN-SRV-001",
+          lat: 38.9072,
+          lng: -77.0369,
+          location: "Virginia, USA",
+          service: "Finance Web Gateway",
+          cve: "CVE-2021-41773 (Apache RCE)",
+          score: 93.8,
+          type: "critical"
+        },
+        {
+          id: "ENG-SRV-001",
+          lat: 50.1109,
+          lng: 8.6821,
+          location: "Frankfurt, Germany",
+          service: "Engineering CI/CD Jenkins",
+          cve: "CVE-2021-44228 (Log4Shell)",
+          score: 90.0,
+          type: "high"
+        },
+        {
+          id: "IT-NET-001",
+          lat: 37.7749,
+          lng: -122.4194,
+          location: "San Francisco, USA",
+          service: "F5 BIG-IP Traffic Manager",
+          cve: "CVE-2020-5902 (194d Stale)",
+          score: 88.5,
+          type: "high"
+        },
+        {
+          id: "OPS-NET-002",
+          lat: -33.8688,
+          lng: 151.2093,
+          location: "Sydney, Australia",
+          service: "Core Switching Infrastructure",
+          cve: "HYGIENE_ALERT (211d Stale)",
+          score: 18.0,
+          type: "monitor"
+        },
+        {
+          id: "OPS-SRV-001",
+          lat: 35.6762,
+          lng: 139.6503,
+          location: "Tokyo, Japan",
+          service: "Prometheus / Grafana Node",
+          cve: "CVE-2021-45046",
+          score: 81.0,
+          type: "high"
+        },
+        {
+          id: "HR-SRV-001",
+          lat: -23.5505,
+          lng: -46.6333,
+          location: "São Paulo, Brazil",
+          service: "Internal Tomcat App",
+          cve: "log4j-core 2.13.3",
+          score: 38.0,
+          type: "monitor"
+        }
+      ];
 
-      filtered.forEach(item => {
-        const tr = document.createElement("tr");
-        tr.className = "hover:bg-slate-800/40 cursor-pointer transition border-b border-slate-800/40";
-        tr.onclick = () => openInspector(item);
+      nodes.forEach(node => {
+        let pulseClass = node.type === 'critical' ? 'beacon-pulse-critical' : (node.type === 'high' ? 'beacon-pulse-high' : '');
+        let coreClass = node.type === 'critical' ? 'beacon-core-critical' : (node.type === 'high' ? 'beacon-core-high' : 'beacon-core-monitor');
 
-        const scoreColor = item.score >= 90 ? "text-rose-400 font-bold" : (item.score >= 70 ? "text-amber-400 font-semibold" : "text-slate-400");
-        const kevTag = item.kev 
-          ? `<span class="text-rose-400 font-semibold flex items-center space-x-1"><span class="w-1.5 h-1.5 bg-rose-500 rounded-full"></span><span>ACTIVE</span></span>` 
-          : `<span class="text-slate-600">NONE</span>`;
-        
-        const hygieneTag = item.stale > 30 
-          ? `<span class="text-amber-400 font-semibold">${item.stale}d stale</span>`
-          : `<span class="text-slate-400">Current</span>`;
+        const customIcon = L.divIcon({
+          className: 'custom-div-icon',
+          html: `
+            <div class="beacon-wrapper">
+              ${pulseClass ? `<div class="${pulseClass}"></div>` : ''}
+              <div class="${coreClass}"></div>
+            </div>
+          `,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
 
-        tr.innerHTML = `
-          <td class="py-2.5 text-slate-200 font-medium">${item.id}<br><span class="text-[10px] text-slate-500">${item.ip}</span></td>
-          <td class="py-2.5">
-            <span class="text-slate-300">${item.sw}</span><br>
-            <span class="text-cyan-400 text-[10px]">${item.cve}</span>
-          </td>
-          <td class="py-2.5 uppercase text-[10px] ${item.crit === 'critical' ? 'text-rose-400' : 'text-amber-400'}">${item.crit}</td>
-          <td class="py-2.5 text-[10px]">${kevTag}</td>
-          <td class="py-2.5 text-[10px]">${hygieneTag}</td>
-          <td class="py-2.5 text-right font-mono ${scoreColor}">${item.score.toFixed(1)}</td>
-        `;
-        tbody.appendChild(tr);
+        const marker = L.marker([node.lat, node.lng], { icon: customIcon }).addTo(map);
+
+        marker.bindPopup(`
+          <div class="p-3 font-mono text-xs space-y-1">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-1.5">
+              <span class="font-bold text-cyan-400">${node.id}</span>
+              <span class="text-rose-400 font-bold">${node.score.toFixed(1)}</span>
+            </div>
+            <p class="text-slate-300 font-medium">${node.service}</p>
+            <p class="text-[10px] text-slate-500">${node.location}</p>
+            <p class="text-rose-400 text-[10px] pt-1">${node.cve}</p>
+          </div>
+        `);
       });
     }
 
-    const scripts = {
-      ciso_summary: () => `
-PS C:\\Lab\\ExposureIntel> .\\Get-CisoSummary.ps1
-[INFO] Executing deterministic telemetry aggregation across 23 nodes...
+    function togglePwshDrawer() {
+      const drawer = document.getElementById("pwsh-drawer");
+      drawer.classList.toggle("translate-x-full");
+    }
 
->>> CISO 3-SENTENCE POSTURE BRIEFING:
-1. Threat exposure is concentrated in active, remotely exploitable vulnerabilities on our perimeter gateway (OPS-NET-003) and core financial application servers (FIN-SRV-001, FIN-SRV-002).
-2. The combination of unmitigated Log4Shell and Apache HTTP Server path traversal allows unauthenticated lateral compromise across Finance and Engineering.
-3. Prioritizing emergency updates on Apache HTTP and Log4j across three key servers eliminates over 60% of fleet-wide actively weaponized CVEs.
-`,
-      monday_patch: () => `
-PS C:\\Lab\\ExposureIntel> .\\Get-SprintPatchQueue.ps1
-[INFO] Ranking queue by CVSS * Criticality * KEV Multiplier:
-
-1. FIN-SRV-001 (10.10.1.11 | Finance)
-   - Software : Apache HTTP Server 2.4.49 -> Upgrade >= 2.4.52
-   - CVE      : CVE-2021-41773 (CVSS 7.5 | KEV: ACTIVE)
-   - Impact   : Unauthenticated path traversal & remote code execution.
-
-2. FIN-SRV-002 (10.10.1.12 | Finance)
-   - Software : log4j-core 2.14.0 -> Upgrade >= 2.17.1
-   - CVE      : CVE-2021-44228 (CVSS 10.0 | KEV: ACTIVE)
-   - Impact   : Log4Shell RCE on primary financial database.
-
-3. OPS-NET-003 (10.10.3.3 | Operations)
-   - Software : Fortinet FortiOS 6.4.5 -> Vendor Security Release
-   - CVE      : CVE-2022-40684 (CVSS 9.8 | KEV: ACTIVE)
-   - Impact   : Perimeter administrative auth bypass.
-`,
-      highest_risk_server: () => `
-PS C:\\Lab\\ExposureIntel> .\\Find-MaxRiskTarget.ps1
-[EVAL] Highest Risk Asset: FIN-SRV-002 (fin-db01.corp.local)
-
-Telemetry Diagnostics:
-- IP Address       : 10.10.1.12 (Finance Database Server)
-- Criticality      : Business-Critical (Tier 1)
-- Active Exploit   : CVE-2021-44228 (Log4Shell, CVSS 10.0)
-- In CISA KEV      : True (Due Date: 2021-12-24 - EXPIRED)
-- Scan Hygiene     : Last scan 2026-05-15 (150 days stale)
-- Risk Multiplier  : 100.0 / 100.0
-Blast Radius: Direct unauthenticated root shell into transactional data store.
-`,
-      stale_scans: () => `
-PS C:\\Lab\\ExposureIntel> .\\Audit-ScanHygiene.ps1 -ThresholdDays 30
-[WARN] 7 nodes exceed the 30-day telemetry staleness threshold:
-
-- OPS-NET-002 (Cisco Switch)  : 211 days stale (Last scan: 2026-03-15)
-- IT-NET-001  (F5 BIG-IP)     : 194 days stale (Hosts CVE-2020-5902)
-- ENG-SRV-002 (Nexus Server)  : 185 days stale (Hosts Apache 2.4.51)
-- FIN-SRV-002 (Finance DB)    : 150 days stale (Hosts Log4Shell)
-
-Assessment: Stale assets introduce blind spots. Threat scores represent lower bounds.
-`
+    const outputDict = {
+      ciso: `PS C:\\Lab> .\\Get-CisoSummary.ps1\n>>> CISO 3-SENTENCE POSTURE BRIEFING:\n1. Threat exposure concentrates on perimeter ingress (OPS-NET-003) and Finance DB (FIN-SRV-002).\n2. Unmitigated Log4Shell and FortiOS authentication bypass allow unauthenticated RCE.\n3. Patching 3 priority targets eliminates over 60% of fleet-wide actively weaponized CVEs.`,
+      patch: `PS C:\\Lab> .\\Get-SprintPatchQueue.ps1\n1. FIN-SRV-002 (Score: 100.0) -> Upgrade log4j >= 2.17.1 (CVE-2021-44228)\n2. IT-SRV-002  (Score: 97.2)  -> Apply ProxyShell rollup (CVE-2021-34473)\n3. OPS-NET-003 (Score: 95.6)  -> Apply FortiOS firmware fix (CVE-2022-40684)`,
+      max: `PS C:\\Lab> .\\Find-MaxRiskTarget.ps1\nHighest Risk Target: FIN-SRV-002 (fin-db01.corp.local)\nCVSS: 10.0 | CISA KEV: ACTIVE | Scan is 150 days stale | Multiplier: 100.0`,
+      hygiene: `PS C:\\Lab> .\\Audit-ScanHygiene.ps1\n[WARN] 7 nodes exceed 30-day freshness threshold.\nOldest: OPS-NET-002 (211 days stale, Cisco IOS 15.2)`
     };
 
-    function execCmdlet(cmd) {
-      const term = document.getElementById("cli-viewport");
-      term.innerHTML += `<div class="mt-2 text-cyan-300 font-mono">${scripts[cmd]()}</div>`;
-      term.scrollTop = term.scrollHeight;
+    function runCmdlet(key) {
+      const stream = document.getElementById("pwsh-stream");
+      stream.innerHTML += `<div class="mt-2 text-cyan-300 whitespace-pre-wrap">${outputDict[key]}</div>`;
+      stream.scrollTop = stream.scrollHeight;
     }
 
-    function handleCliInput() {
-      const input = document.getElementById("cli-input");
-      const val = input.value.trim();
+    function execDrawerInput() {
+      const inp = document.getElementById("drawer-input");
+      const val = inp.value.trim();
       if (!val) return;
-
-      const term = document.getElementById("cli-viewport");
-      term.innerHTML += `
-        <div class="mt-2 text-slate-400 font-mono"><span class="text-cyan-400">PS C:\\Lab\\ExposureIntel&gt;</span> ${val}</div>
-      `;
-
-      const low = val.toLowerCase();
-      let response = "";
-      if (low.includes("apache")) {
-        response = `[QUERY RESULT] Found 2 Apache nodes:
-- FIN-SRV-001 (2.4.49) -> CVE-2021-41773 (Path Traversal / RCE)
-- ENG-SRV-002 (2.4.51) -> CVE-2021-42013 (Incomplete patch continuation)`;
-      } else if (low.includes("log4j")) {
-        response = `[QUERY RESULT] Found 3 Log4j nodes:
-- FIN-SRV-002 (2.14.0) -> CVE-2021-44228 (Log4Shell - CRITICAL)
-- ENG-SRV-001 (2.14.1) -> CVE-2021-44228 (Log4Shell - CRITICAL)
-- OPS-SRV-001 (2.15.0) -> CVE-2021-45046 (DoS / Partial RCE)`;
-      } else {
-        response = `[DISPATCH] Query routed to telemetry pipeline. Run .\\Get-SprintPatchQueue.ps1 for prioritized output.`;
-      }
-
-      term.innerHTML += `<div class="text-slate-300 font-mono text-[11px] whitespace-pre-wrap">${response}</div>`;
-      input.value = "";
-      term.scrollTop = term.scrollHeight;
+      const stream = document.getElementById("pwsh-stream");
+      stream.innerHTML += `<div class="mt-2 text-slate-400">PS&gt; ${val}</div>`;
+      stream.innerHTML += `<div class="text-slate-300">Command processed. Telemetry aligned with dashboard.</div>`;
+      inp.value = "";
+      stream.scrollTop = stream.scrollHeight;
     }
 
-    function openInspector(item) {
-      const modal = document.getElementById("inspector-modal");
-      const dump = document.getElementById("modal-dump");
-      dump.innerHTML = `
-        <p><span class="text-slate-500">NodeName     :</span> <span class="text-cyan-400 font-bold">${item.id}</span> (${item.host})</p>
-        <p><span class="text-slate-500">IPAddress    :</span> ${item.ip}</p>
-        <p><span class="text-slate-500">BusinessUnit :</span> ${item.dept} | Criticality: <span class="text-rose-400 font-bold">${item.crit.toUpperCase()}</span></p>
-        <p><span class="text-slate-500">PackageFound :</span> ${item.sw}</p>
-        <p><span class="text-slate-500">MatchedCVE   :</span> <span class="text-rose-400 font-bold">${item.cve}</span> (CVSS Base: ${item.cvss})</p>
-        <p><span class="text-slate-500">InCISAKEV    :</span> ${item.kev ? 'True (Active Exploitation)' : 'False'}</p>
-        <p><span class="text-slate-500">KEVDueDate   :</span> ${item.due}</p>
-        <p><span class="text-slate-500">LastAudit    :</span> ${item.scan} (${item.stale} days stale)</p>
-        <div class="mt-2 pt-2 border-t border-slate-800">
-          <span class="text-slate-500">ActionPlan   :</span>
-          <p class="text-emerald-400 mt-1">${item.fix}</p>
-        </div>
-      `;
-      modal.classList.remove("hidden");
-    }
-
-    function closeInspector() {
-      document.getElementById("inspector-modal").classList.add("hidden");
+    function openDetails(assetId) {
+      togglePwshDrawer();
+      const stream = document.getElementById("pwsh-stream");
+      stream.innerHTML += `<div class="mt-2 text-cyan-300">PS&gt; Get-AssetTelemetry -Id ${assetId}\nAsset: ${assetId} | Audit Verified | Check CVE & KEV due dates.</div>`;
+      stream.scrollTop = stream.scrollHeight;
     }
 
     function exportCSVManifest() {
-      const headers = ["AssetID", "Hostname", "IP", "Department", "Criticality", "Software", "CVE", "CVSS", "InKEV", "DueDate", "Score", "ActionPlan"];
-      const rows = inventory.map(i => [
-        i.id, i.host, i.ip, i.dept, i.crit, `"${i.sw}"`, i.cve, i.cvss, i.kev ? "TRUE" : "FALSE", i.due, i.score, `"${i.fix}"`
-      ]);
-      const csv = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+      const rows = [
+        ["AssetID", "Department", "CVE", "CVSS", "InKEV", "DaysStale", "RiskScore"],
+        ["FIN-SRV-002", "Finance", "CVE-2021-44228", "10.0", "TRUE", "150", "100.0"],
+        ["IT-SRV-002", "IT", "CVE-2021-34473", "9.8", "TRUE", "129", "97.2"],
+        ["OPS-NET-003", "Operations", "CVE-2022-40684", "9.8", "TRUE", "0", "95.6"],
+        ["FIN-SRV-001", "Finance", "CVE-2021-41773", "7.5", "TRUE", "0", "93.8"],
+        ["ENG-SRV-001", "Engineering", "CVE-2021-44228", "10.0", "TRUE", "0", "90.0"]
+      ];
+      const csv = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
       const link = document.createElement("a");
       link.href = encodeURI(csv);
-      link.download = "SecOps_Patch_Manifest_2026-10-12.csv";
+      link.download = "SecOps_Prioritized_Patch_Manifest.csv";
       link.click();
     }
 
     window.onload = () => {
       lucide.createIcons();
-      renderGrid();
+      initMap();
     };
   </script>
 </body>
